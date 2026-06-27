@@ -15,8 +15,10 @@ function DashboardDoctor() {
   const [form, setForm] = useState({ peso: '', diagnostico: '', tratamiento: '', proximaCita: '' })
   const [guardando, setGuardando] = useState(false)
   const [seccion, setSeccion] = useState('pendientes')
+  const [cargando, setCargando] = useState(true)
 
   const cargarDatos = async () => {
+    setCargando(true)
     const uid = auth.currentUser?.uid
     if (!uid) return
 
@@ -33,9 +35,19 @@ function DashboardDoctor() {
 
     const todas = citasSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    setCitasPendientes(todas.filter(c => !c.consultaRegistrada && c.fecha <= hoy))
-    setCitasAtendidas(todas.filter(c => c.consultaRegistrada))
-    setCitasProximas(todas.filter(c => !c.consultaRegistrada && c.fecha > hoy))
+    // Verificar que el cliente aún existe
+    const citasValidas = []
+    for (const cita of todas) {
+      const clienteSnap = await getDoc(doc(db, 'clientes', cita.clienteId))
+      if (clienteSnap.exists()) {
+        citasValidas.push(cita)
+      }
+    }
+
+    setCitasPendientes(citasValidas.filter(c => !c.consultaRegistrada && c.fecha <= hoy))
+    setCitasAtendidas(citasValidas.filter(c => c.consultaRegistrada))
+    setCitasProximas(citasValidas.filter(c => !c.consultaRegistrada && c.fecha > hoy))
+    setCargando(false)
   }
 
   useEffect(() => { cargarDatos() }, [])
@@ -108,14 +120,15 @@ function DashboardDoctor() {
 
       <div className="p-6 max-w-3xl mx-auto">
 
-        {/* Tabs */}
         <div className="flex gap-3 mb-6">
           <TabButton id="pendientes" label="📋 Pendientes" cantidad={citasPendientes.length} />
           <TabButton id="proximas" label="📅 Próximas" cantidad={citasProximas.length} />
           <TabButton id="atendidas" label="✅ Atendidas" cantidad={citasAtendidas.length} />
         </div>
 
-        {citasActuales.length === 0 && (
+        {cargando && <p className="text-gray-500 text-center mt-8">Cargando citas...</p>}
+
+        {!cargando && citasActuales.length === 0 && (
           <div className="bg-white rounded-2xl shadow p-6 text-center text-gray-400">
             {seccion === 'pendientes' && 'No tienes citas pendientes de atender'}
             {seccion === 'proximas' && 'No tienes citas próximas'}
@@ -129,9 +142,9 @@ function DashboardDoctor() {
               <div className="flex justify-between items-center">
                 <div>
                   <p className="font-bold text-lg">🐾 {cita.nombreMascota}</p>
-                  <p className="text-gray-500 text-sm">👤 Dueño: {cita.nombreCliente}</p>
+                  <p className="text-gray-500 text-sm">👤 {cita.nombreCliente}</p>
                   <p className="text-gray-500 text-sm">📅 {cita.fecha} — {cita.hora}</p>
-                  <p className="text-gray-500 text-sm">📋 Motivo: {cita.motivo}</p>
+                  <p className="text-gray-500 text-sm">📋 {cita.motivo}</p>
                 </div>
                 <div className="flex flex-col gap-2">
                   {seccion === 'pendientes' && (
