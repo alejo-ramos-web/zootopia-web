@@ -25,12 +25,15 @@ function Clientes() {
   const [showModal, setShowModal] = useState(false)
   const [editando, setEditando] = useState(null)
   const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [cargando, setCargando] = useState(true)
   const [form, setForm] = useState({ nombre: '', telefono: '', email: '', direccion: '', foto: '' })
 
   const cargarClientes = async () => {
+    setCargando(true)
     const snapshot = await getDocs(collection(db, 'clientes'))
     const lista = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
     setClientes(lista)
+    setCargando(false)
   }
 
   useEffect(() => { cargarClientes() }, [])
@@ -68,15 +71,29 @@ function Clientes() {
   }
 
   const handleEliminar = async (id) => {
-    if (confirm('¿Estás seguro de eliminar este cliente?')) {
+    if (!confirm('¿Estás seguro de eliminar este cliente? Se eliminarán también sus mascotas e historial.')) return
+    try {
+      // Eliminar mascotas e historial
+      const mascotasSnap = await getDocs(collection(db, 'clientes', id, 'mascotas'))
+      for (const mascota of mascotasSnap.docs) {
+        const historialSnap = await getDocs(collection(db, 'clientes', id, 'mascotas', mascota.id, 'historial'))
+        for (const consulta of historialSnap.docs) {
+          await deleteDoc(doc(db, 'clientes', id, 'mascotas', mascota.id, 'historial', consulta.id))
+        }
+        await deleteDoc(doc(db, 'clientes', id, 'mascotas', mascota.id))
+      }
       await deleteDoc(doc(db, 'clientes', id))
       cargarClientes()
+    } catch (err) {
+      alert('Error al eliminar el cliente')
     }
   }
 
   const clientesFiltrados = clientes.filter(c =>
     c.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-    c.telefono?.includes(busqueda)
+    c.telefono?.includes(busqueda) ||
+    c.email?.toLowerCase().includes(busqueda.toLowerCase()) ||
+    c.direccion?.toLowerCase().includes(busqueda.toLowerCase())
   )
 
   return (
@@ -92,13 +109,15 @@ function Clientes() {
         </button>
       </nav>
 
-      <div className="p-6">
-        <input type="text" placeholder="🔍 Buscar por nombre o teléfono..."
+      <div className="p-6 max-w-4xl mx-auto">
+        <input type="text" placeholder="🔍 Buscar por nombre, teléfono, email o dirección..."
           value={busqueda} onChange={e => setBusqueda(e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-4 py-2 mb-6 focus:outline-none focus:ring-2 focus:ring-blue-400" />
 
-        <div className="grid gap-4 max-w-4xl mx-auto">
-          {clientesFiltrados.length === 0 && <p className="text-gray-500 text-center">No hay clientes registrados</p>}
+        {cargando && <p className="text-gray-500 text-center">Cargando clientes...</p>}
+
+        <div className="grid gap-4">
+          {!cargando && clientesFiltrados.length === 0 && <p className="text-gray-500 text-center">No hay clientes registrados</p>}
           {clientesFiltrados.map(cliente => (
             <div key={cliente.id} className="bg-white rounded-xl shadow p-4 flex justify-between items-center">
               <div className="flex items-center gap-4">
@@ -132,8 +151,6 @@ function Clientes() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-screen overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">{editando ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
             <div className="space-y-3">
-
-              {/* Foto perfil */}
               <div className="flex flex-col items-center gap-2">
                 {form.foto ? (
                   <img src={form.foto} alt="perfil" className="w-24 h-24 rounded-full object-cover border-2 border-blue-300" />
@@ -145,7 +162,6 @@ function Clientes() {
                   <input type="file" accept="image/*" onChange={handleFoto} className="hidden" disabled={subiendoFoto} />
                 </label>
               </div>
-
               <input placeholder="Nombre completo *" value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })}
                 className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
               <input placeholder="Teléfono *" value={form.telefono} onChange={e => setForm({ ...form, telefono: e.target.value })}
